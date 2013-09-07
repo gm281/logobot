@@ -1,0 +1,2 @@
+In order to get the usb<->serial working I needed to install drivers downloaded from here:
+http://www.ftdichip.com/Drivers/VCP.htm
