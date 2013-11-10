@@ -23,6 +23,8 @@ typedef unsigned long timestamp_t;
 #define NOW     micros()
 #define VALID_DELAY(_d) ((_d) > 0 && (_d) < ((-1UL) >> 2))
 
+#define ANALOG_TO_MILLIVOLTS(_a)     ((_a) * 5000UL / 1024UL)
+
 void delay_microseconds(unsigned long /* timestamp_t */ delay_us)
 {
     if (delay_us < 16000UL)
@@ -208,6 +210,7 @@ enum {
     POWER_UP_COMMAND,
     READ_SERIAL_COMMAND,
     MOTOR_TEST_COMMAND,
+    SAMPLE_PINS_COMMAND,
     NR_COMMAND_TYPES
 };
 
@@ -215,6 +218,7 @@ void start_command_handler(struct command command)
 {
     command_t power_up;
     command_t serial_input;
+    command_t sample_pins;
 
     Serial.println("Start command");
     stat_accumulator_init(&serial_stats);
@@ -226,6 +230,10 @@ void start_command_handler(struct command command)
     serial_input.type = READ_SERIAL_COMMAND;
     serial_input.timestamp = NOW;
     push_command(serial_input);
+
+    sample_pins.type = SAMPLE_PINS_COMMAND;
+    sample_pins.timestamp = NOW;
+    push_command(sample_pins);
 }
 
 void power_up_command_handler(struct command command)
@@ -253,9 +261,12 @@ void motor_test_init(unsigned long step_delay_us, int forward)
     push_command(command);
 }
 
+static struct stat_accumulator stats;
+static unsigned long counter;
 void motor_test_step(struct command command)
 {
     int dirMotor1, dirMotor2;
+    timestamp_t st, en;
 
     if (motor_test_active.steps_left == 0)
     {
@@ -264,6 +275,7 @@ void motor_test_step(struct command command)
         return;
     }
 
+    st = NOW;
     dirMotor1 = motor_test_active.forward ? FORWARD : BACKWARD;
     dirMotor2 = motor_test_active.forward ? FORWARD : BACKWARD;
 
@@ -274,6 +286,12 @@ void motor_test_step(struct command command)
     command.timestamp += motor_test_active.step_delay_us;
     assert(command.type == MOTOR_TEST_COMMAND);
     push_command(command);
+    en = NOW;
+    stat_accumulator_sample(&stats, (en - st));
+    if (counter++ % 200 == 0) {
+        stat_accumulator_print(&stats);
+        stat_accumulator_init(&stats);
+    }
 }
 
 void read_serial_command_handler(struct command command)
@@ -297,11 +315,71 @@ void read_serial_command_handler(struct command command)
     push_command(command);
 }
 
+static int buttons_standard_voltage = -1;
+static timestamp_t buttons_last_notification = 0;
+static timestamp_t buttons_last_print = 0;
+void sample_pins_command_handler(struct command command)
+{
+    int battery, amp, buttons;
+
+    battery = analogRead(battery_voltage_pin);
+    amp = analogRead(ampmeter_pin);
+    buttons = analogRead(buttons_pin);
+
+    /* If not initialised, initialise. */
+    if (buttons_standard_voltage < 0) {
+        buttons_standard_voltage = buttons;
+    } else
+    /* If voltage at least 5% higher than standard, button pressed. */
+    if (100UL * buttons > 105UL * buttons_standard_voltage) {
+        if (NOW - buttons_last_notification > 500UL * 1000UL) {
+            /* Close to max reading of 1024, i.e. secondary button. */
+            if (buttons > 1000) {
+                Serial.println("Secondary button");
+            } else {
+                Serial.println("Primary button");
+                digitalWrite(power_up_pin, LOW);
+            }
+            buttons_last_notification = NOW;
+        }
+    /* Fall through: calculate standard voltage.
+       Note that at the start of day standard voltage will approx
+       the primary button voltage. But this will fix itself with
+       enough samples after the button is released. This is of no
+       major impact to button press detection since it relies on
+       positive edge.
+     */
+    } else {
+        buttons_standard_voltage = (9 * buttons_standard_voltage + 1 * buttons) / 10;
+    }
+
+    if (NOW - buttons_last_print > 1000UL * 1000UL) {
+        battery = ANALOG_TO_MILLIVOLTS(battery);
+        amp = ANALOG_TO_MILLIVOLTS(amp);
+        buttons = ANALOG_TO_MILLIVOLTS(buttons);
+        Serial.print(battery);
+        Serial.print(",");
+        Serial.print(amp);
+        Serial.print(",");
+        Serial.print(buttons);
+        Serial.print(" ");
+        Serial.print(buttons_standard_voltage);
+        Serial.println("");
+        buttons_last_print = NOW;
+    }
+
+    /* Finally requeue another sample in 10ms. */
+    command.type = SAMPLE_PINS_COMMAND;
+    command.timestamp = NOW + 10UL * 1000UL;
+    push_command(command);
+}
+
 void (*command_handlers[NR_COMMAND_TYPES])(struct command command) = {
     /* [START_COMMAND] =       */ start_command_handler,
     /* [POWER_UP_COMMAND] =    */ power_up_command_handler,
     /* [READ_SERIAL_COMMAND] = */ read_serial_command_handler,
     /* [MOTOR_TEST_COMMAND] =  */ motor_test_step,
+    /* [SAMPLE_PINS_COMMAND] = */ sample_pins_command_handler,
 };
 
 
