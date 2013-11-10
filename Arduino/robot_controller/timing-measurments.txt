@@ -3,3 +3,5 @@ loop around + empty serial read: [36,39,52]
 queue_empty check + popping of queue + working out wait time: [32,32,40]
 popping: [28,29,40]
 whole loop - sleep: [68,72,84]
+
+single iteration of motor step (both motors): [280,285,296] 

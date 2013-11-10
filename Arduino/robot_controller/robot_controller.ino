@@ -276,17 +276,14 @@ void motor_test_step(struct command command)
     push_command(command);
 }
 
-static long counter = 0;
-
 void read_serial_command_handler(struct command command)
 {
-    long st = NOW;
     while (Serial.available() > 0) {
+        unsigned long delay_us;
         unsigned char b = Serial.read();
         Serial.println(b);
 
         int rpm;
-        unsigned long delay_us;
         if (b > 'z') b = 'z';
         if (b < 'a') b = 'a';
         rpm = 16*16 * (b - 'a' + 1) / ('z' - 'a');
@@ -298,16 +295,6 @@ void read_serial_command_handler(struct command command)
     command.type = READ_SERIAL_COMMAND;
     command.timestamp = NOW + 1000UL * 1000UL / BAUD_RATE;
     push_command(command);
-    long en = NOW;
-    //stat_accumulator_sample(&serial_stats, (en - st));
-    counter++;
-    //if (counter % (5 * BAUD_RATE) == 0) {
-    //    Serial.print("=> ");
-    //    Serial.print(counter);
-    //    Serial.println(" printing stuff");
-    //    stat_accumulator_print(&serial_stats);
-    //    stat_accumulator_init(&serial_stats);
-    //}
 }
 
 void (*command_handlers[NR_COMMAND_TYPES])(struct command command) = {
@@ -338,9 +325,7 @@ void setup() {
     push_command(start_command);
 }
 
-static stat_accumulator wait_stats;
 // the loop routine runs over and over again forever:
-timestamp_t last_t;
 void loop() {
     command_t current_command;
     command_handler_t handler;
@@ -359,18 +344,9 @@ void loop() {
     current_command = pop_command();
     handler = command_handlers[current_command.type];
     wait_time = current_command.timestamp - NOW;
-    current_t = NOW;
-
-    stat_accumulator_sample(&wait_stats, (current_t - last_t));
-    if (counter % (BAUD_RATE) == 0)
-    {
-        stat_accumulator_print(&wait_stats);
-        stat_accumulator_init(&wait_stats);
-    }
 
     if (VALID_DELAY(wait_time))
         delay_microseconds(wait_time);
-    last_t = NOW;
     handler(current_command);
 }
 
