@@ -1,0 +1,14 @@
+sudo apt-get install gstreamer-tools gstreamer0.10-plugins-bad gstreamer0.10-plugins-good v4l-utils gstreamer0.10-alsa
+
+in /etc/modprobe.d/alsa-base.conf commented out:
+#options snd-usb-audio index=-2
+following: http://elinux.org/RPi_VerifiedPeripherals
+
+using alsamixer gone to capture on the usb card and increased the volume
+
+gst-launch -v v4l2src ! ffmpegcolorspace ! video/x-raw-yuv,width=320,height=240,framerate=\(fraction\)30/1 ! queue ! videorate ! video/x-raw-yuv,framerate=10/1 ! jpegenc ! multipartmux ! tcpserversink host=192.168.0.201 port=5000 sync=false
+
+
+
+gst-launch -v v4l2src ! "image/jpeg,width=1280,height=720,framerate=30/1" ! multipartmux ! tcpserversink host=192.168.0.201 port=5000 sync=false
+gst-launch -v v4l2src ! "image/jpeg,width=1280,height=720,framerate=30/1" ! multipartmux ! tcpserversink host=192.168.0.201 port=5000 sync=false alsasrc device=hw:1 ! audioconvert ! audioresample ! "audio/x-raw-int,rate=8000,width=16,channels=1" ! tcpserversink host=192.168.0.201 port=5001 sync=false

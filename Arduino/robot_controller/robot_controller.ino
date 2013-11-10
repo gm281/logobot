@@ -1,4 +1,15 @@
-#include<assert.h>
+#include <assert.h>
+#include <AFMotor.h>
+
+/***********************************************************************************************/
+/* CONFIG */
+/***********************************************************************************************/
+
+#define BAUD_RATE   (9600UL)
+int battery_voltage_pin = A2;
+int power_up_pin = A3;
+int ampmeter_pin = A4;
+int buttons_pin = A5;
 
 /***********************************************************************************************/
 /* UTILITIES */
@@ -6,24 +17,77 @@
 #define CONCAT_TOKENS( TokenA, TokenB )       TokenA ## TokenB
 #define EXPAND_THEN_CONCAT( TokenA, TokenB )  CONCAT_TOKENS( TokenA, TokenB )
 #define ASSERT( Expression )                  enum{ EXPAND_THEN_CONCAT( ASSERT_line_, __LINE__ ) = 1 / !!( Expression ) }
-#define ASSERTM( Expression, Message )        enum{ EXPAND_THEN_CONCAT( Message ## _ASSERT_line_, __LINE__ ) = 1 / !!( Expression ) } 
+#define ASSERTM( Expression, Message )        enum{ EXPAND_THEN_CONCAT( Message ## _ASSERT_line_, __LINE__ ) = 1 / !!( Expression ) }
 
 typedef unsigned long timestamp_t;
 #define NOW     micros()
-#define VALID_DELAY(_d) ((_d) < ((-1UL) >> 2))
+#define VALID_DELAY(_d) ((_d) > 0 && (_d) < ((-1UL) >> 2))
 
-void delay_microseconds(unsigned long /* timestamp_t */ delay_us) {
-    if (delay_us < 16000)
+void delay_microseconds(unsigned long /* timestamp_t */ delay_us)
+{
+    if (delay_us < 16000UL)
         delayMicroseconds(delay_us);
     else
-        delay(delay_us / 1000);
+        delay(delay_us / 1000UL);
 }
 
-#define BAUD_RATE   (9600)
+struct stat_accumulator {
+    long min;
+    long max;
+    long nr_samples;
+    long sum_samples;
+    long sum_square_samples;
+};
+
+void stat_accumulator_init(struct stat_accumulator *accumulator)
+{
+    memset(accumulator, 0, sizeof(struct stat_accumulator));
+    accumulator->min = 0x7FFFFFFFUL;
+    accumulator->max = 0x80000000UL;
+}
+
+void stat_accumulator_sample(struct stat_accumulator *accumulator, long sample)
+{
+    accumulator->min = min(accumulator->min, sample);
+    accumulator->max = max(accumulator->max, sample);
+    accumulator->nr_samples++;
+    accumulator->sum_samples += sample;
+    accumulator->sum_square_samples += sample * sample;
+}
+
+void stat_accumulator_print(struct stat_accumulator *accumulator)
+{
+    long average, average_squares;
+    double standard_deviation;
+
+    if (accumulator->nr_samples == 0) {
+        Serial.println("#0");
+        return;
+    }
+    average = accumulator->sum_samples / accumulator->nr_samples;
+    average_squares = accumulator->sum_square_samples / accumulator->nr_samples;
+    standard_deviation = sqrt(average_squares - average * average);
+
+    Serial.print("[");
+    Serial.print(accumulator->min);
+    Serial.print(",");
+    Serial.print(average);
+    Serial.print(",");
+    Serial.print(accumulator->max);
+    Serial.print("] #");
+    Serial.print(accumulator->nr_samples);
+    Serial.print(", sd: ");
+    Serial.print(standard_deviation);
+    Serial.println("");
+}
 
 /***********************************************************************************************/
 /* COMMAND QUEUE */
 /***********************************************************************************************/
+
+AF_Stepper motor1(200, 1);
+AF_Stepper motor2(200, 2);
+
 typedef unsigned char command_type_t;
 struct command {
     timestamp_t timestamp;
@@ -135,45 +199,122 @@ int queue_empty() {
 /***********************************************************************************************/
 /* COMMANDS */
 /***********************************************************************************************/
+static stat_accumulator serial_stats;
+
 typedef void (*command_handler_t)(command_t command);
 
 enum {
     START_COMMAND,
+    POWER_UP_COMMAND,
     READ_SERIAL_COMMAND,
+    MOTOR_TEST_COMMAND,
     NR_COMMAND_TYPES
 };
 
 void start_command_handler(struct command command)
 {
+    command_t power_up;
     command_t serial_input;
 
     Serial.println("Start command");
+    stat_accumulator_init(&serial_stats);
+
+    power_up.type = POWER_UP_COMMAND;
+    power_up.timestamp = NOW;
+    push_command(power_up);
+
     serial_input.type = READ_SERIAL_COMMAND;
     serial_input.timestamp = NOW;
     push_command(serial_input);
 }
 
+void power_up_command_handler(struct command command)
+{
+    pinMode(power_up_pin, OUTPUT);
+    digitalWrite(power_up_pin, HIGH);
+}
+
+struct {
+    unsigned long step_delay_us;
+    int forward;
+    unsigned int steps_left;
+} motor_test_active;
+
+void motor_test_init(unsigned long step_delay_us, int forward)
+{
+    command_t command;
+
+    motor_test_active.step_delay_us = step_delay_us;
+    motor_test_active.forward = forward;
+    motor_test_active.steps_left = 600;
+
+    command.timestamp = NOW;
+    command.type = MOTOR_TEST_COMMAND;
+    push_command(command);
+}
+
+void motor_test_step(struct command command)
+{
+    int dirMotor1, dirMotor2;
+
+    if (motor_test_active.steps_left == 0)
+    {
+        if (motor_test_active.forward)
+            motor_test_init(motor_test_active.step_delay_us, 0);
+        return;
+    }
+
+    dirMotor1 = motor_test_active.forward ? FORWARD : BACKWARD;
+    dirMotor2 = motor_test_active.forward ? FORWARD : BACKWARD;
+
+    motor1.onestep(dirMotor1, INTERLEAVE);
+    motor2.onestep(dirMotor2, INTERLEAVE);
+
+    motor_test_active.steps_left--;
+    command.timestamp += motor_test_active.step_delay_us;
+    assert(command.type == MOTOR_TEST_COMMAND);
+    push_command(command);
+}
+
+static long counter = 0;
+
 void read_serial_command_handler(struct command command)
 {
-    static int read_serial_exec_cnt = 0;
-
-    read_serial_exec_cnt++;
-    if (read_serial_exec_cnt % BAUD_RATE == 0)
-        Serial.println(read_serial_exec_cnt);
-
+    long st = NOW;
     while (Serial.available() > 0) {
-        Serial.read();
+        unsigned char b = Serial.read();
+        Serial.println(b);
+
+        int rpm;
+        unsigned long delay_us;
+        if (b > 'z') b = 'z';
+        if (b < 'a') b = 'a';
+        rpm = 16*16 * (b - 'a' + 1) / ('z' - 'a');
+        delay_us = (60000UL / 200UL) * 1000UL / rpm / 2;
+        motor_test_init(delay_us, 1);
     }
 
     /* Finally requeue to check serial line at the appropriate time. */
     command.type = READ_SERIAL_COMMAND;
     command.timestamp = NOW + 1000UL * 1000UL / BAUD_RATE;
     push_command(command);
+    long en = NOW;
+    //stat_accumulator_sample(&serial_stats, (en - st));
+    counter++;
+    //if (counter % (5 * BAUD_RATE) == 0) {
+    //    Serial.print("=> ");
+    //    Serial.print(counter);
+    //    Serial.println(" printing stuff");
+    //    stat_accumulator_print(&serial_stats);
+    //    stat_accumulator_init(&serial_stats);
+    //}
 }
 
 void (*command_handlers[NR_COMMAND_TYPES])(struct command command) = {
     /* [START_COMMAND] =       */ start_command_handler,
-    /* [READ_SERIAL_COMMAND] = */ read_serial_command_handler
+    /* [POWER_UP_COMMAND] =    */ power_up_command_handler,
+    /* [READ_SERIAL_COMMAND] = */ read_serial_command_handler,
+    /* [MOTOR_TEST_COMMAND] =  */ motor_test_step,
 };
 
 
@@ -197,14 +338,19 @@ void setup() {
     push_command(start_command);
 }
 
+static stat_accumulator wait_stats;
 // the loop routine runs over and over again forever:
+timestamp_t last_t;
 void loop() {
     command_t current_command;
     command_handler_t handler;
     timestamp_t wait_time;
 
-    /* If there are no commands left, idle. */
+    timestamp_t start_t;
+    timestamp_t current_t;
+   /* If there are no commands left, idle. */
     if (queue_empty()) {
+        Serial.println("WARNING: Empty queue");
         delay(1000);
         return;
     }
@@ -213,8 +359,18 @@ void loop() {
     current_command = pop_command();
     handler = command_handlers[current_command.type];
     wait_time = current_command.timestamp - NOW;
+    current_t = NOW;
+
+    stat_accumulator_sample(&wait_stats, (current_t - last_t));
+    if (counter % (BAUD_RATE) == 0)
+    {
+        stat_accumulator_print(&wait_stats);
+        stat_accumulator_init(&wait_stats);
+    }
+
     if (VALID_DELAY(wait_time))
         delay_microseconds(wait_time);
+    last_t = NOW;
     handler(current_command);
 }
 
