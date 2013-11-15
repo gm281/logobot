@@ -2,8 +2,8 @@
  
 import socket               # Import socket module
 s = socket.socket()         # Create a socket object
-host = '192.168.0.201'	    # Get local machine name
-port = 12348                # Reserve a port for your service.
+host = '192.168.0.141'	    # Get local machine name
+port = 12349                # Reserve a port for your service.
  
 import serial
 import time

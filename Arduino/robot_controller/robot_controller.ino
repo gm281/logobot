@@ -24,6 +24,7 @@ typedef unsigned long timestamp_t;
 #define VALID_DELAY(_d) ((_d) > 0 && (_d) < ((-1UL) >> 2))
 
 #define ANALOG_TO_MILLIVOLTS(_a)     ((_a) * 5000UL / 1024UL)
+#define ABS(_v)  ((_v) < 0 ? -(_v) : (_v))
 
 void delay_microseconds(unsigned long /* timestamp_t */ delay_us)
 {
@@ -211,6 +212,7 @@ enum {
     READ_SERIAL_COMMAND,
     MOTOR_TEST_COMMAND,
     SAMPLE_PINS_COMMAND,
+    MOTOR_MOVEMENT_COMMAND,
     NR_COMMAND_TYPES
 };
 
@@ -261,12 +263,9 @@ void motor_test_init(unsigned long step_delay_us, int forward)
     push_command(command);
 }
 
-static struct stat_accumulator stats;
-static unsigned long counter;
 void motor_test_step(struct command command)
 {
     int dirMotor1, dirMotor2;
-    timestamp_t st, en;
 
     if (motor_test_active.steps_left == 0)
     {
@@ -275,7 +274,6 @@ void motor_test_step(struct command command)
         return;
     }
 
-    st = NOW;
     dirMotor1 = motor_test_active.forward ? FORWARD : BACKWARD;
     dirMotor2 = motor_test_active.forward ? FORWARD : BACKWARD;
 
@@ -286,30 +284,205 @@ void motor_test_step(struct command command)
     command.timestamp += motor_test_active.step_delay_us;
     assert(command.type == MOTOR_TEST_COMMAND);
     push_command(command);
-    en = NOW;
-    stat_accumulator_sample(&stats, (en - st));
-    if (counter++ % 200 == 0) {
-        stat_accumulator_print(&stats);
-        stat_accumulator_init(&stats);
+}
+
+struct {
+    long left_step_delay;
+    long right_step_delay;
+    unsigned long next_step_left;
+    unsigned long next_step_right;
+    unsigned int left_steps_left;
+    unsigned int right_steps_left;
+} motor_movement;
+
+void motor_movement_command_init(long left_steps, long right_steps, unsigned long duration)
+{
+    command_t command;
+    timestamp_t now;
+    long abs_l, abs_r;
+
+    Serial.println(left_steps);
+    Serial.println(right_steps);
+    Serial.println(duration);
+
+    motor_movement.left_steps_left = ABS(left_steps);
+    motor_movement.right_steps_left = ABS(right_steps);
+    motor_movement.left_step_delay = (long)duration / left_steps;
+    motor_movement.right_step_delay = (long)duration / right_steps;
+
+    abs_l = ABS(motor_movement.left_step_delay);
+    abs_r = ABS(motor_movement.right_step_delay);
+    Serial.print(motor_movement.left_step_delay);
+    Serial.print(",");
+    Serial.print(motor_movement.right_step_delay);
+    Serial.print(",");
+    Serial.print(abs_l);
+    Serial.print(",");
+    Serial.print(abs_r);
+    Serial.println("");
+
+    if (abs_l < 1000 || abs_r < 1000) {
+        Serial.println("Too quick");
+        return;
     }
+    now = NOW;
+    motor_movement.next_step_left = now;
+    motor_movement.next_step_right = now;
+    command.timestamp = NOW;
+    command.type = MOTOR_MOVEMENT_COMMAND;
+    push_command(command);
+}
+
+void motor_movement_command_handler(struct command command)
+{
+    int motor_choice; /* true for left, false for right */
+    int direction;
+
+    /* Check whether we are done with everything. */
+    if (motor_movement.left_steps_left == 0 &&
+        motor_movement.right_steps_left == 0) {
+        return;
+    }
+
+    /* Work out which motor is earlier. */
+    motor_choice = motor_movement.next_step_left <= motor_movement.next_step_right;
+
+    /* Perform the step. */
+    direction = motor_choice ?
+                    (motor_movement.left_step_delay > 0 ? FORWARD : BACKWARD) :
+                    (motor_movement.right_step_delay > 0 ? FORWARD : BACKWARD);
+    if (motor_choice) {
+        motor1.onestep(direction, INTERLEAVE);
+    } else {
+        motor2.onestep(direction, INTERLEAVE);
+    }
+
+    /* Update the movement structure */
+    if (motor_choice) {
+        motor_movement.left_steps_left--;
+        motor_movement.next_step_left += ABS(motor_movement.left_step_delay);
+        if (motor_movement.left_steps_left == 0) {
+            motor_movement.next_step_left += 10UL * 1000UL * 1000UL;
+        }
+    } else {
+        motor_movement.right_steps_left--;
+        motor_movement.next_step_right += ABS(motor_movement.right_step_delay);
+        if (motor_movement.right_steps_left == 0) {
+            motor_movement.next_step_right += 10UL * 1000UL * 1000UL;
+        }
+    }
+
+    /* Push fresh command */
+    command.type = MOTOR_MOVEMENT_COMMAND;
+    command.timestamp = min(motor_movement.next_step_left,
+                            motor_movement.next_step_right);
+    push_command(command);
+}
+
+
+#define BUFFER_LENGTH   32
+struct serial_data {
+    char buffer[BUFFER_LENGTH];
+    int buffer_offset;
+};
+static struct serial_data read_serial_data = {{0}, 0};
+
+long parse_long(char *buffer, char *end, char **new_buffer)
+{
+    int idx;
+    long out;
+
+    Serial.print(buffer);
+    idx = 0;
+    for (idx=0; buffer + idx < end; idx++) {
+        if (idx == 0 && buffer[idx] == '-') {
+            continue;
+        }
+        if (buffer[idx] < '0' || buffer[idx] > '9') {
+            buffer[idx] = '\0';
+            break;
+        }
+    }
+    *new_buffer = (buffer + idx + 1);
+    if (idx == 0) {
+        return 0;
+    }
+    out = atol(buffer);
+
+    Serial.print("Parsing \"");
+    Serial.print(buffer);
+    Serial.print("\", got: ");
+    Serial.print(out);
+    Serial.println("");
+
+    return out;
+}
+
+void process_serial_command(void)
+{
+    char *b = read_serial_data.buffer;
+
+    switch (*b) {
+        case 't':
+        {
+            unsigned long delay_us;
+            int rpm;
+            char c;
+
+            c = *(++b);
+            if (c > 'z') c = 'z';
+            if (c < 'a') c = 'a';
+            rpm = 16*16 * (c - 'a' + 1) / ('z' - 'a');
+            delay_us = (60000UL / 200UL) * 1000UL / rpm / 2;
+            motor_test_init(delay_us, 1);
+            break;
+        }
+
+        case 'm':
+        {
+            long steps_l, steps_r, duration;
+            char *end;
+
+            b++;
+            end = read_serial_data.buffer + read_serial_data.buffer_offset;
+            steps_l = parse_long(b, end, &b);
+            steps_r = parse_long(b, end, &b);
+            duration = parse_long(b, end, &b);
+            Serial.println("=========");
+            Serial.println(steps_l);
+            Serial.println(steps_r);
+            Serial.println(duration);
+            Serial.println("=========");
+            motor_movement_command_init(steps_l, steps_r, 1000UL * duration);
+            break;
+        }
+        default:
+            Serial.print("Unknown command: \"");
+            Serial.print(b);
+            Serial.println("\"");
+            break;
+    }
+    read_serial_data.buffer_offset = 0;
 }
 
 void read_serial_command_handler(struct command command)
 {
     while (Serial.available() > 0) {
-        unsigned long delay_us;
-        unsigned char b = Serial.read();
-        Serial.println(b);
+        char b;
+        int idx;
 
-        int rpm;
-        if (b > 'z') b = 'z';
-        if (b < 'a') b = 'a';
-        rpm = 16*16 * (b - 'a' + 1) / ('z' - 'a');
-        delay_us = (60000UL / 200UL) * 1000UL / rpm / 2;
-        motor_test_init(delay_us, 1);
+        idx = read_serial_data.buffer_offset;
+        b = Serial.read();
+        assert(idx < BUFFER_LENGTH);
+        read_serial_data.buffer[idx] = b;
+        read_serial_data.buffer_offset++;
+        if (b == '\n' || b == '$') {
+            read_serial_data.buffer[idx] = '\0';
+            process_serial_command();
+        }
     }
 
-    /* Finally requeue to check serial line at the appropriate time. */
+    /* Finally, requeue to check serial line at the appropriate time. */
     command.type = READ_SERIAL_COMMAND;
     command.timestamp = NOW + 1000UL * 1000UL / BAUD_RATE;
     push_command(command);
@@ -357,6 +530,7 @@ void sample_pins_command_handler(struct command command)
         battery = ANALOG_TO_MILLIVOLTS(battery);
         amp = ANALOG_TO_MILLIVOLTS(amp);
         buttons = ANALOG_TO_MILLIVOLTS(buttons);
+#if 0
         Serial.print(battery);
         Serial.print(",");
         Serial.print(amp);
@@ -365,6 +539,7 @@ void sample_pins_command_handler(struct command command)
         Serial.print(" ");
         Serial.print(buttons_standard_voltage);
         Serial.println("");
+#endif
         buttons_last_print = NOW;
     }
 
@@ -375,11 +550,12 @@ void sample_pins_command_handler(struct command command)
 }
 
 void (*command_handlers[NR_COMMAND_TYPES])(struct command command) = {
-    /* [START_COMMAND] =       */ start_command_handler,
-    /* [POWER_UP_COMMAND] =    */ power_up_command_handler,
-    /* [READ_SERIAL_COMMAND] = */ read_serial_command_handler,
-    /* [MOTOR_TEST_COMMAND] =  */ motor_test_step,
-    /* [SAMPLE_PINS_COMMAND] = */ sample_pins_command_handler,
+    /* [START_COMMAND] =          */ start_command_handler,
+    /* [POWER_UP_COMMAND] =       */ power_up_command_handler,
+    /* [READ_SERIAL_COMMAND] =    */ read_serial_command_handler,
+    /* [MOTOR_TEST_COMMAND] =     */ motor_test_step,
+    /* [SAMPLE_PINS_COMMAND] =    */ sample_pins_command_handler,
+    /* [MOTOR_MOVEMENT_COMMAND] = */ motor_movement_command_handler,
 };
 
 
