@@ -26,16 +26,16 @@ def send_command(key):
     command = ''
     if key == curses.KEY_UP:
     	stdscr.addstr(0,0,"UP")
-        command = 'm100,100,1000$'
+        command = 'm50,50,400$'
     elif key == curses.KEY_DOWN:
     	stdscr.addstr(0,0,"DOWN")
-        command = 'm-100,-100,1000$'
+        command = 'm-50,-50,400$'
     elif key == curses.KEY_LEFT:
     	stdscr.addstr(0,0,"LEFT")
-        command = 'm100,-100,1000$'
+        command = 'm50,-50,400$'
     elif key == curses.KEY_RIGHT:
     	stdscr.addstr(0,0,"RIGH")
-        command = 'm-100,100,1000$'
+        command = 'm-50,50,400$'
     stdscr.addstr(1,0,command)
     socket.send(command)
 
@@ -59,7 +59,7 @@ def read_loop():
             stdscr.refresh()
             continue
         curr_time = datetime.now()
-        if key != last_key or (curr_time - last_command_time) > timedelta(milliseconds = 1000):
+        if key != last_key or (curr_time - last_command_time) > timedelta(milliseconds = 300):
             send_command(key)
             last_command_time = curr_time
         last_key = key
