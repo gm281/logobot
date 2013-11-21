@@ -280,15 +280,15 @@ void motor_movement_command_init(long left_steps, long right_steps, unsigned lon
     timestamp_t now;
     long left_step_delay, right_step_delay;
 
-    Serial.print("mm:");
-    Serial.print(left_steps);
-    Serial.print(",");
-    Serial.print(right_steps);
-    Serial.print(",");
-    Serial.print(duration);
-    Serial.print(",a");
-    Serial.print(motor_movement.active);
-    Serial.println("");
+    //Serial.print("mm:");
+    //Serial.print(left_steps);
+    //Serial.print(",");
+    //Serial.print(right_steps);
+    //Serial.print(",");
+    //Serial.print(duration);
+    //Serial.print(",a");
+    //Serial.print(motor_movement.active);
+    //Serial.println("");
     left_step_delay = (long)duration / left_steps;
     right_step_delay = (long)duration / right_steps;
 
@@ -309,11 +309,11 @@ void motor_movement_command_init(long left_steps, long right_steps, unsigned lon
 
     // If there is an active movement command in the command queue, let that handle things
     if (motor_movement.active) {
-        Serial.println("Already active command, exit");
+        //Serial.println("Already active command, exit");
         return;
     }
 
-    Serial.println("Activating new movement");
+    // Serial.println("Activating new movement");
     // Otherwise kick one off starting now
     motor_movement.active = 1;
     now = NOW;
@@ -362,7 +362,7 @@ void motor_movement_command_handler(struct command command)
     /* Check whether we are done with everything. */
     if (motor_movement.left_steps_left == 0 &&
         motor_movement.right_steps_left == 0) {
-        Serial.println("Deactivating movement");
+        //Serial.println("Deactivating movement");
         // TODO: is there a race if we are handling exactly the last movement command while a new one arrives on serial?
         motor_movement.active = 0;
         return;

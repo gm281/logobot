@@ -20,22 +20,29 @@ def connect():
     port = 12349
     socket.connect((host, port))
 
-def send_command(key):
+def send_command(key, same_direction):
+    global current_speed
     global stdscr
     global socket
+
+    if (not same_direction):
+        current_speed = 50
+    else:
+        current_speed = current_speed + 10
+        current_speed = min(current_speed, 100)
     command = ''
     if key == curses.KEY_UP:
-    	stdscr.addstr(0,0,"UP")
-        command = 'm50,50,400$'
+        stdscr.addstr(0,0,"UP")
+        command = 'm' + str(current_speed) + ','  + str(current_speed) + ',400$'
     elif key == curses.KEY_DOWN:
-    	stdscr.addstr(0,0,"DOWN")
-        command = 'm-50,-50,400$'
+        stdscr.addstr(0,0,"DOWN")
+        command = 'm-' + str(current_speed) + ',-'  + str(current_speed) + ',400$'
     elif key == curses.KEY_LEFT:
-    	stdscr.addstr(0,0,"LEFT")
-        command = 'm50,-50,400$'
+        stdscr.addstr(0,0,"LEFT")
+        command = 'm' + str(current_speed) + ',-'  + str(current_speed) + ',400$'
     elif key == curses.KEY_RIGHT:
-    	stdscr.addstr(0,0,"RIGH")
-        command = 'm-50,50,400$'
+        stdscr.addstr(0,0,"RIGH")
+        command = 'm-' + str(current_speed) + ','  + str(current_speed) + ',400$'
     stdscr.addstr(1,0,command)
     socket.send(command)
 
@@ -52,6 +59,7 @@ def read_loop():
     key = ''
     last_key = ''
     last_command_time = datetime.now()
+    last_evaluation_time = datetime.now()
     while key != ord('q'):
         key = stdscr.getch()
         stdscr.clear()
@@ -59,9 +67,10 @@ def read_loop():
             stdscr.refresh()
             continue
         curr_time = datetime.now()
-        if key != last_key or (curr_time - last_command_time) > timedelta(milliseconds = 300):
-            send_command(key)
+        if key != last_key or (curr_time - last_command_time) > timedelta(milliseconds = 100):
+            send_command(key, (key == last_key) and ((curr_time - last_evaluation_time) < timedelta(milliseconds = 100)))
             last_command_time = curr_time
+        last_evaluation_time = curr_time
         last_key = key
         stdscr.refresh()
         count = count + 1
