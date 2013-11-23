@@ -38,7 +38,19 @@ public class MovementControllerView extends View implements View.OnTouchListener
 	}
 
 	public boolean onTouch(View v, MotionEvent event) {
-		controller.touchEventAt(event.getX(0), event.getY(0));
+		int pointerIndex = 0;
+		float x = event.getX(pointerIndex);
+		float y = event.getY(pointerIndex);
+		/* Convert x and y to relative coordinates, for the Controller/Model. */
+		float height = this.getHeight();
+		float width = this.getWidth();
+		x -= width / 2;
+		x /= width / 2;
+		y = height - y;
+		y -= height / 3;
+		y /= (2 * height / 3);
+		
+		controller.touchEventAt(x, y);
 		this.invalidate();
 		return true;
 	}
