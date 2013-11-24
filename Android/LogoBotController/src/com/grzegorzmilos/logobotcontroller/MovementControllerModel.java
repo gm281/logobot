@@ -47,7 +47,7 @@ public class MovementControllerModel {
 		return new Pair<Integer, Integer>((int)rightWheelSteps, (int)leftWheelSteps);
 	}
 
-	public void touchEventAt(float x, float y) {
+	public double touchEventAt(float x, float y) {
 		this.lastDesiredTimestamp = System.currentTimeMillis();
 
 		double desiredSpeed = Math.sqrt(x*x + y*y);
@@ -68,6 +68,8 @@ public class MovementControllerModel {
 		
 		//Pair<Integer, Integer> steps = getStepsForAngleAndTotalSteps(desiredAngle, MAX_STEPS_PER_SECOND);
 		//System.out.println("l: "+steps.second + ", r: " + steps.first);
+		
+		return this.desiredSpeed;
 	}
 	
 	private double getDesiredAngle() {

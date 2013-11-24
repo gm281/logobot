@@ -11,10 +11,13 @@ public class MovementControllerActivity extends Activity {
 	private MovementControllerModel movementModel;
 	private MovementControllerView movementView;
 	private Handler timerHandler;
+	private boolean noEvent;
 
 	public MovementControllerActivity() {
 		movementModel = new MovementControllerModel();
+		movementView = null;
 		timerHandler = new Handler();
+		noEvent = true;
 	}
 	
 	@Override
@@ -27,15 +30,22 @@ public class MovementControllerActivity extends Activity {
 	}
 	
 	public void touchEventAt(float x, float y) {
-		movementModel.touchEventAt(x,y);
+		noEvent = false;
+		double desiredSpeed = movementModel.touchEventAt(x,y);
+		movementView.setDesiredSpeed(desiredSpeed);
 	}
     
 	private Runnable timerRunnable = new Runnable () {
     	@Override
     	public void run() {
     		System.out.println("TH");
-    		
+
+    		if (noEvent && movementView != null) {
+    			movementView.centerToOrigin();
+    		}    		
+    		noEvent = true;
     		Pair<Integer, Integer> movementCommand = movementModel.getMovementCommand(SINGLE_COMMAND_DURATION_MS);
+
     		System.out.println("Moving by: l:" + movementCommand.first + ", r:" + movementCommand.second);
     		timerHandler.postDelayed(timerRunnable, 100);
     	}
