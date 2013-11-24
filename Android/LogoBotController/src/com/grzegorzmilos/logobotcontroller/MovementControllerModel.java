@@ -115,12 +115,12 @@ public class MovementControllerModel {
 		double desiredSpeed = getDesiredSpeed();
 		double desiredSteps = 2 * desiredSpeed * MAX_STEPS_PER_SECOND * commandDurationMS / 1000; 
 		double desiredAngle = getDesiredAngle();
-		System.out.println("Desired speed: "+desiredSpeed + ", desiredSteps: " + desiredSteps + ", desiredAngle: " + desiredAngle);
+		//System.out.println("Desired speed: "+desiredSpeed + ", desiredSteps: " + desiredSteps + ", desiredAngle: " + desiredAngle);
 		
 		Pair<Integer, Integer> steps = getStepsForAngleAndTotalSteps(desiredAngle, desiredSteps);
 		double desiredRightWheelSpeed = 1000 * steps.first / commandDurationMS;
 		double desiredLeftWheelSpeed = 1000 * steps.second / commandDurationMS;
-		System.out.println("Desired rightSteps: " + steps.first + "("+ desiredRightWheelSpeed+"), leftSteps: " + steps.second+"(" + desiredLeftWheelSpeed+")");
+		//System.out.println("Desired rightSteps: " + steps.first + "("+ desiredRightWheelSpeed+"), leftSteps: " + steps.second+"(" + desiredLeftWheelSpeed+")");
 
 		this.currentRightWheelSpeed = maxAccelerationSpeed(this.currentRightWheelSpeed, desiredRightWheelSpeed, timeSinceLastCommand);
 		this.currentLeftWheelSpeed = maxAccelerationSpeed(this.currentLeftWheelSpeed, desiredLeftWheelSpeed, timeSinceLastCommand);
