@@ -43,6 +43,34 @@ public class MovementControllerActivity extends Activity {
 		this.movementView = new MovementControllerView(this, controller);
 		setContentView(this.movementView);
 	}
-	
 
+	@Override
+	public void onStart() {
+		super.onStart();
+		System.out.println("======== STARTING =========");
+	}
+		
+	@Override
+	public void onStop() {
+		super.onStop();
+		System.out.println("======== STOPPING =========");
+	}
+
+	@Override
+	public void onPause() {
+		super.onPause();
+		System.out.println("======== PAUSING =========");
+	}
+	
+	@Override
+	public void onRestart() {
+		super.onRestart();
+		System.out.println("======== RESTARTING =========");
+	}
+
+	@Override
+	public void onResume() {
+		super.onResume();
+		System.out.println("======== RESUMING =========");
+	}
 }
