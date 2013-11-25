@@ -4,9 +4,9 @@ import android.util.Pair;
 
 public class MovementControllerModel {
 
-	private static final int MAX_STEPS_PER_SECOND = 300;
+	private static final int MAX_STEPS_PER_SECOND = 150;
 	private static final long ACCELERATION_TIME_MS_TO_MAX_STEPS = 1000;
-    private static final double STEERING_WHEEL_DISTANCE_M = 1;
+    private static final double STEERING_WHEEL_DISTANCE_M = 0.2;
     private static final double DRIVE_WHEEL_SEPARATION_M = 0.2;
     private static final double MAX_EVENT_INTERARRIVAL_TIME_MS = 200;
     
@@ -47,8 +47,13 @@ public class MovementControllerModel {
 		return new Pair<Integer, Integer>((int)rightWheelSteps, (int)leftWheelSteps);
 	}
 
-	public double touchEventAt(float x, float y) {
+	public double touchEventAt(boolean down, float x, float y) {
 		this.lastDesiredTimestamp = System.currentTimeMillis();
+
+		if (!down) {
+			this.desiredSpeed = 0;
+			return 0;
+		}
 
 		double desiredSpeed = Math.sqrt(x*x + y*y);
 		this.desiredSpeed = desiredSpeed < 1 ? desiredSpeed : 1;
@@ -66,9 +71,6 @@ public class MovementControllerModel {
 		}
 		this.desiredAngle = desiredAngle;
 		
-		//Pair<Integer, Integer> steps = getStepsForAngleAndTotalSteps(desiredAngle, MAX_STEPS_PER_SECOND);
-		//System.out.println("l: "+steps.second + ", r: " + steps.first);
-		
 		return this.desiredSpeed;
 	}
 	
@@ -77,12 +79,6 @@ public class MovementControllerModel {
 	}
 	
 	private double getDesiredSpeed() {
-		long currentTime = System.currentTimeMillis();
-		
-		if (currentTime - this.lastDesiredTimestamp > MAX_EVENT_INTERARRIVAL_TIME_MS) {
-			return 0;
-		}
-		
 		if (this.desiredSpeed < 0.05) {
 			return 0;
 		}

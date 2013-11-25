@@ -52,6 +52,8 @@ public class MovementControllerView extends View implements View.OnTouchListener
 	}
 
 	public boolean onTouch(View v, MotionEvent event) {
+		// TODO: pay attention to event.getPointerCount()
+		//System.out.println("==> " + event.getAction() +  ": " + event.getPointerCount());
 		int pointerIndex = 0;
 		float x = event.getX(pointerIndex);
 		float y = event.getY(pointerIndex);
@@ -66,7 +68,17 @@ public class MovementControllerView extends View implements View.OnTouchListener
 		y /= ORIGIN_Y * height;
 		y *= -1;
 		
-		controller.touchEventAt(x, y);
+		boolean downEvent = true;
+		if (event.getAction() == MotionEvent.ACTION_UP) {
+			downEvent = false;
+		} else {
+			if (event.getAction() != MotionEvent.ACTION_DOWN &&
+				event.getAction() != MotionEvent.ACTION_MOVE) {
+				System.out.println("Event type nethinge DOWN or UP or MOVE\n");
+			}
+		}
+			
+		controller.touchEventAt(downEvent, x, y);
 		this.invalidate();
 		return true;
 	}

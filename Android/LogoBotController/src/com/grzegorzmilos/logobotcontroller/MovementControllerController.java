@@ -15,8 +15,8 @@ import android.util.Pair;
 
 public class MovementControllerController extends Fragment {
 
-	private static final String ROBOT_ADDRESS = "192.168.0.108";
-	private static final int ROBOT_PORT = 12348;
+	private static final String ROBOT_ADDRESS = "192.168.0.141";
+	private static final int ROBOT_PORT = 12347;
 	private static final int SINGLE_COMMAND_DURATION_MS = 1000;
 
 	private MovementControllerActivity currentActivity;
@@ -51,10 +51,14 @@ public class MovementControllerController extends Fragment {
         currentActivity = (MovementControllerActivity)activity;
     }
 
-	public void touchEventAt(float x, float y) {
-		noEvent = false;
-		double desiredSpeed = movementModel.touchEventAt(x,y);
-		currentActivity.setDesiredSpeed(desiredSpeed);
+	public void touchEventAt(boolean down, float x, float y) {
+		noEvent = !down;
+		double desiredSpeed = movementModel.touchEventAt(down, x,y);
+		if (desiredSpeed < 0.01) {
+			currentActivity.centerToOrigin();
+		} else {
+			currentActivity.setDesiredSpeed(desiredSpeed);
+		}
 	}
     
     private class OpenRobotConnection extends AsyncTask<Void, Void, Boolean> {
@@ -110,7 +114,6 @@ public class MovementControllerController extends Fragment {
     		if (noEvent && currentActivity != null) {
     			currentActivity.centerToOrigin();
     		}    		
-    		noEvent = true;
     		Pair<Integer, Integer> steps = movementModel.getMovementCommand(SINGLE_COMMAND_DURATION_MS);
 
     		if (steps.first == 0 && steps.second == 0) {
@@ -118,6 +121,8 @@ public class MovementControllerController extends Fragment {
     				timerHandler.postDelayed(timerRunnable, 100);
     				return;
     			}
+                // One step as a stop command (robot doesn't accept 0,0)
+    			steps = new Pair<Integer, Integer>(1,1);
     			moving = false;
     		} else {
     			moving = true;
