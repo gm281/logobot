@@ -13,16 +13,17 @@ public class MovementControllerView extends View implements View.OnTouchListener
 
 	private static final float ORIGIN_X = 0.5f;
 	private static final float ORIGIN_Y = 0.66f;
-	private MovementControllerActivity controller;
+	private MovementControllerController controller;
 	private Paint circlePaint = new Paint();
+	private Paint innerCirclePaint = new Paint();
 	private Paint linePaint = new Paint();
 	private float x;
 	private float y;
 	private static final float MIN_CIRCLE_RADIUS = 50;
 	private float circleRadius;
 	
-	public MovementControllerView(MovementControllerActivity controller) {
-		this(controller, null);
+	public MovementControllerView(Context context, MovementControllerController controller) {
+		this(context, (AttributeSet)null);
 		this.controller = controller;
 	}
 
@@ -37,12 +38,16 @@ public class MovementControllerView extends View implements View.OnTouchListener
 		circlePaint.setStrokeWidth(5);
 		circlePaint.setStyle(Style.STROKE);
 		circlePaint.setAntiAlias(true);
+		innerCirclePaint.setColor(Color.GRAY);
+		innerCirclePaint.setStrokeWidth(5);
+		innerCirclePaint.setStyle(Paint.Style.FILL);
+		innerCirclePaint.setAntiAlias(true);
 		linePaint.setColor(Color.GREEN);
 		linePaint.setStrokeWidth(5);
 		linePaint.setStyle(Style.STROKE);
 		linePaint.setAntiAlias(true);
 
-		setBackgroundColor(Color.MAGENTA);
+		setBackgroundColor(Color.BLACK);
 		this.setOnTouchListener(this);
 	}
 
@@ -104,7 +109,7 @@ public class MovementControllerView extends View implements View.OnTouchListener
 		canvas.drawLine(ORIGIN_X * width + deltaX1, ORIGIN_Y * height + deltaY1, ORIGIN_X * width, ORIGIN_Y * height, this.circlePaint);
 		canvas.drawLine(ORIGIN_X * width + deltaX2, ORIGIN_Y * height + deltaY2, ORIGIN_X * width, ORIGIN_Y * height, this.circlePaint);
 		canvas.drawCircle(this.x, this.y, this.circleRadius, circlePaint);
-		canvas.drawCircle(this.x, this.y, 5.0f, circlePaint);
+		canvas.drawCircle(this.x, this.y, 5.0f, innerCirclePaint);
 	}
 
 }
