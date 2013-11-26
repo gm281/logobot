@@ -3,7 +3,7 @@
 import socket               # Import socket module
 s = socket.socket()         # Create a socket object
 host = '192.168.0.141'	    # Get local machine name
-port = 12349                # Reserve a port for your service.
+port = 12347                # Reserve a port for your service.
  
 import serial
 import time
@@ -11,6 +11,7 @@ import time
 DEVICE = '/dev/ttyACM0' # the arduino serial interface (use dmesg when connecting)
 BAUD = 9600
 ser = serial.Serial(DEVICE, BAUD)
+
  
  
 s.bind((host, port))        # Bind to the port
@@ -27,4 +28,7 @@ while True:
             c.close() 
             break
         print 'Got "%s", writing to serial' % msg
+	if '$' in msg:
+		millis = int(round(time.time() * 1000))
+		print 'Time: ' + str(millis)
         ser.write(msg)  # write the byte to the serial interface
