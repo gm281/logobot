@@ -4,21 +4,18 @@ import android.util.Pair;
 
 public class MovementControllerModel {
 
-	private static final int MAX_STEPS_PER_SECOND = 150;
+	private static final int MAX_STEPS_PER_SECOND = 180;
 	private static final long ACCELERATION_TIME_MS_TO_MAX_STEPS = 1000;
     private static final double STEERING_WHEEL_DISTANCE_M = 0.2;
     private static final double DRIVE_WHEEL_SEPARATION_M = 0.2;
-    private static final double MAX_EVENT_INTERARRIVAL_TIME_MS = 200;
     
     private double desiredAngle;
     private double desiredSpeed;
-    private long lastDesiredTimestamp;
     private double currentRightWheelSpeed; /* In steps per second */
     private double currentLeftWheelSpeed;  /* In steps per second */
     private long lastCommandTimestamp;
     
 	public MovementControllerModel() {
-		this.lastDesiredTimestamp = 0;
 		this.desiredAngle = 0;
 		this.desiredSpeed = 0;
 		this.lastCommandTimestamp = 0;
@@ -26,7 +23,7 @@ public class MovementControllerModel {
 		this.currentLeftWheelSpeed = 0;
 	}
 	
-	private Pair<Integer, Integer> getStepsForAngleAndTotalSteps(double desiredAngle, double desiredSteps) {
+	private Pair<Integer, Integer> getStepsForAngleAndTotalSteps(double desiredAngle, double desiredSpeed, int commandDurationMS) {
 		double tan = Math.tan(desiredAngle);
 		double radius;
 		if (tan != 0) {
@@ -37,9 +34,13 @@ public class MovementControllerModel {
 
 		double rightWheelRadius = radius - DRIVE_WHEEL_SEPARATION_M / 2;
 		double leftWheelRadius = radius + DRIVE_WHEEL_SEPARATION_M / 2;
-		
-		double stepsPerRadiusUnit =  desiredSteps / (Math.abs(rightWheelRadius) + Math.abs(leftWheelRadius));
-		
+
+		/* Determine the number of steps on the basis of bigger radius (faster moving wheel) */
+		double smallerRadius = Math.max(Math.abs(rightWheelRadius), Math.abs(leftWheelRadius));
+		double desiredSteps = desiredSpeed * MAX_STEPS_PER_SECOND * commandDurationMS / 1000; 
+		double stepsPerRadiusUnit =  desiredSteps / smallerRadius;
+
+		/* Work out how many steps each wheel is supposed to do. */
 		double f = desiredAngle > 0 ? 1.0 : -1.0;
 		double rightWheelSteps = f * stepsPerRadiusUnit * rightWheelRadius;
 		double leftWheelSteps = f * stepsPerRadiusUnit * leftWheelRadius;
@@ -48,14 +49,12 @@ public class MovementControllerModel {
 	}
 
 	public double touchEventAt(boolean down, float x, float y) {
-		this.lastDesiredTimestamp = System.currentTimeMillis();
-
 		if (!down) {
 			this.desiredSpeed = 0;
 			return 0;
 		}
 
-		double desiredSpeed = Math.sqrt(x*x + y*y);
+		double desiredSpeed = Math.sqrt(x*x + (y > 0 ? 1.4*y*y : y*y));
 		this.desiredSpeed = desiredSpeed < 1 ? desiredSpeed : 1;
 
 		double desiredAngle;
@@ -109,11 +108,10 @@ public class MovementControllerModel {
 		}
 
 		double desiredSpeed = getDesiredSpeed();
-		double desiredSteps = 2 * desiredSpeed * MAX_STEPS_PER_SECOND * commandDurationMS / 1000; 
 		double desiredAngle = getDesiredAngle();
 		//System.out.println("Desired speed: "+desiredSpeed + ", desiredSteps: " + desiredSteps + ", desiredAngle: " + desiredAngle);
 		
-		Pair<Integer, Integer> steps = getStepsForAngleAndTotalSteps(desiredAngle, desiredSteps);
+		Pair<Integer, Integer> steps = getStepsForAngleAndTotalSteps(desiredAngle, desiredSpeed, commandDurationMS);
 		double desiredRightWheelSpeed = 1000 * steps.first / commandDurationMS;
 		double desiredLeftWheelSpeed = 1000 * steps.second / commandDurationMS;
 		//System.out.println("Desired rightSteps: " + steps.first + "("+ desiredRightWheelSpeed+"), leftSteps: " + steps.second+"(" + desiredLeftWheelSpeed+")");

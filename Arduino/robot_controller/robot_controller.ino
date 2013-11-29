@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <AFMotor.h>
 
 /***********************************************************************************************/
@@ -18,6 +17,7 @@ int buttons_pin = A5;
 #define EXPAND_THEN_CONCAT( TokenA, TokenB )  CONCAT_TOKENS( TokenA, TokenB )
 #define ASSERT( Expression )                  enum{ EXPAND_THEN_CONCAT( ASSERT_line_, __LINE__ ) = 1 / !!( Expression ) }
 #define ASSERTM( Expression, Message )        enum{ EXPAND_THEN_CONCAT( Message ## _ASSERT_line_, __LINE__ ) = 1 / !!( Expression ) }
+#define assert(x)                             if (!(x)) { Serial.print("Failure in: "); Serial.println(__LINE__); }
 
 typedef unsigned long timestamp_t;
 #define NOW     micros()
@@ -92,15 +92,17 @@ AF_Stepper motor1(200, 1);
 AF_Stepper motor2(200, 2);
 
 typedef unsigned char command_type_t;
+typedef unsigned long command_data_t;
 struct command {
     timestamp_t timestamp;
     command_type_t type;
+    command_data_t data;
 };
 typedef struct command command_t;
 typedef unsigned int command_id_t;
 
 /* Use 1KB for the command structures, half mem available. */
-#define COMMANDS_QUEUE_SIZE (1024 / sizeof(command_t))
+#define COMMANDS_QUEUE_SIZE (512 / sizeof(command_t))
 command_t commands[COMMANDS_QUEUE_SIZE];
 command_id_t commands_used = 0;
 
@@ -265,7 +267,7 @@ void motor_test_step(struct command command)
 }
 
 struct motor_movement {
-    int active;
+    unsigned long command_sequence_number;
     long left_step_delay;
     long right_step_delay;
     unsigned long next_step_left;
@@ -274,23 +276,34 @@ struct motor_movement {
     unsigned int right_steps_left;
 } motor_movement;
 
+static int command_count = 0;
 void motor_movement_command_init(long left_steps, long right_steps, unsigned long duration)
 {
     command_t command;
     timestamp_t now;
     long left_step_delay, right_step_delay;
 
-    //Serial.print("mm:");
-    //Serial.print(left_steps);
-    //Serial.print(",");
-    //Serial.print(right_steps);
-    //Serial.print(",");
-    //Serial.print(duration);
-    //Serial.print(",a");
-    //Serial.print(motor_movement.active);
-    //Serial.println("");
-    left_step_delay = (long)duration / left_steps;
-    right_step_delay = (long)duration / right_steps;
+    //command_count++;
+    //if (command_count % 10 == 0) {
+    //    Serial.print("mm:");
+    //    Serial.print(left_steps);
+    //    Serial.print(",");
+    //    Serial.print(right_steps);
+    //    Serial.print(",");
+    //    Serial.print(duration);
+    //    Serial.print(",a");
+    //    Serial.print(motor_movement.active);
+    //    Serial.println("");
+    //}
+
+    left_step_delay = 10UL * 1000UL * 1000UL;
+    right_step_delay = 10UL * 1000UL * 1000UL;
+    if (left_steps != 0) {
+        left_step_delay = (long)duration / left_steps;
+    }
+    if (right_steps != 0) {
+        right_step_delay = (long)duration / right_steps;
+    }
 
     if (ABS(left_step_delay) < 1000 || ABS(right_step_delay) < 1000) {
         Serial.println("Too quick");
@@ -307,31 +320,52 @@ void motor_movement_command_init(long left_steps, long right_steps, unsigned lon
     motor_movement.left_step_delay = left_step_delay;
     motor_movement.right_step_delay = right_step_delay;
 
-    // If there is an active movement command in the command queue, let that handle things
-    if (motor_movement.active) {
-        //Serial.println("Already active command, exit");
-        return;
-    }
-
-    // Serial.println("Activating new movement");
-    // Otherwise kick one off starting now
-    motor_movement.active = 1;
+    /* Push a new command into the queue, making sure to match sequence numbers */
+    motor_movement.command_sequence_number = motor_movement.command_sequence_number + 1;
     now = NOW;
-    motor_movement.next_step_left = now;
-    motor_movement.next_step_right = now;
-    command.timestamp = NOW;
+    /* Assign when is the next step going to happen, respect current delay if it's earlier. */
+    if (now + ABS(left_step_delay) < motor_movement.next_step_left) {
+        motor_movement.next_step_left = now + ABS(left_step_delay);
+    }
+    if (now + ABS(right_step_delay) < motor_movement.next_step_right) {
+        motor_movement.next_step_right = now + ABS(right_step_delay);
+    }
+    command.timestamp = min(motor_movement.next_step_left, motor_movement.next_step_right);
     command.type = MOTOR_MOVEMENT_COMMAND;
+    command.data = motor_movement.command_sequence_number;
     push_command(command);
 }
+
+struct motor_movement_debug {
+    unsigned long left_steps_done;
+    unsigned long right_steps_done;
+    timestamp_t last_print;
+} motor_movement_debug;
 
 void motor_movement_command_handler(struct command command)
 {
     int motor_choice; /* true for left, false for right */
     int direction;
 
+    /* Check whether the sequence number is correct, if not, this command is obsolete, return. */
+    if (command.data != motor_movement.command_sequence_number) {
+        return;
+    }
+
+    /* Otherwise execute movement. */
     assert(motor_movement.left_steps_left != 0 || motor_movement.right_steps_left != 0);
 
     /* Work out which motor is earlier. */
+    if (motor_movement.left_steps_left == 0) {
+        motor_choice = 0;
+    } else {
+        if (motor_movement.right_steps_left == 0) {
+            motor_choice = 1;
+        } else {
+            motor_choice = motor_movement.next_step_left <= motor_movement.next_step_right;
+        }
+    }
+
     motor_choice = motor_movement.next_step_left <= motor_movement.next_step_right;
 
     /* Perform the step. */
@@ -346,12 +380,14 @@ void motor_movement_command_handler(struct command command)
 
     /* Update the movement structure */
     if (motor_choice) {
+        motor_movement_debug.left_steps_done++;
         motor_movement.left_steps_left--;
         motor_movement.next_step_left += ABS(motor_movement.left_step_delay);
         if (motor_movement.left_steps_left == 0) {
             motor_movement.next_step_left += 10UL * 1000UL * 1000UL;
         }
     } else {
+        motor_movement_debug.right_steps_done++;
         motor_movement.right_steps_left--;
         motor_movement.next_step_right += ABS(motor_movement.right_step_delay);
         if (motor_movement.right_steps_left == 0) {
@@ -363,8 +399,6 @@ void motor_movement_command_handler(struct command command)
     if (motor_movement.left_steps_left == 0 &&
         motor_movement.right_steps_left == 0) {
         //Serial.println("Deactivating movement");
-        // TODO: is there a race if we are handling exactly the last movement command while a new one arrives on serial?
-        motor_movement.active = 0;
         return;
     }
 
@@ -372,6 +406,7 @@ void motor_movement_command_handler(struct command command)
     command.type = MOTOR_MOVEMENT_COMMAND;
     command.timestamp = min(motor_movement.next_step_left,
                             motor_movement.next_step_right);
+    command.data = motor_movement.command_sequence_number;
     push_command(command);
 }
 
@@ -463,6 +498,14 @@ void process_serial_command(void)
 
 void read_serial_command_handler(struct command command)
 {
+    timestamp_t now = NOW;
+    if (now - motor_movement_debug.last_print > 1000UL * 1000UL) {
+        Serial.print(motor_movement_debug.left_steps_done);
+        Serial.print(" ");
+        Serial.print(motor_movement_debug.right_steps_done);
+        Serial.println("");
+        motor_movement_debug.last_print = now;
+    }
     while (Serial.available() > 0) {
         char b;
         int idx;
@@ -506,7 +549,7 @@ void sample_pins_command_handler(struct command command)
             if (buttons > 1000) {
                 Serial.println("Secondary button");
             } else {
-                Serial.println("Primary button");
+                //Serial.println("Primary button");
                 digitalWrite(power_up_pin, LOW);
             }
             buttons_last_notification = NOW;
@@ -554,6 +597,7 @@ void start_command_handler(struct command command)
     Serial.println("Start command");
     stat_accumulator_init(&serial_stats);
     memset(&motor_movement, 0, sizeof(struct motor_movement));
+    memset(&motor_movement_debug, 0, sizeof(struct motor_movement_debug));
 
     power_up.type = POWER_UP_COMMAND;
     power_up.timestamp = NOW;
@@ -591,6 +635,7 @@ void setup() {
 
     pinMode(led, OUTPUT);
     Serial.begin(BAUD_RATE);
+    Serial.print("setup");
     /* Reset the queue and initiate operation by queueing the start command. */
     reset_queue();
     start_command.type = START_COMMAND;
