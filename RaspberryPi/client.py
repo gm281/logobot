@@ -19,7 +19,7 @@ def getch():
 
 s = socket.socket()         # Create a socket object
 host = '192.168.0.141' #socket.gethostname() # Get local machine name
-port = 12349                # Reserve a port for your service.
+port = 12347                # Reserve a port for your service.
 
 print 'Connecting to ', host, port
 s.connect((host, port))

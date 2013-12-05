@@ -17,7 +17,7 @@ def connect():
     global socket
     socket = socket.socket()
     host = '192.168.0.141'
-    port = 12349
+    port = 12347
     socket.connect((host, port))
 
 def send_command(key, same_direction):
