@@ -1,0 +1,53 @@
+Set up according to:
+http://elinux.org/RPi_Advanced_Setup
+
+Copy of the relavnt section:
+
+Install avahi with the following commands on the Pi:
+sudo apt-get install avahi-daemon
+and then on older Debian installs:
+sudo update-rc.d avahi-daemon defaults
+or on newer Raspbian installs:
+sudo insserv avahi-daemon
+(if in doubt, you're probably on the newer one).
+Create a configfile for Avahi at /etc/avahi/services/multiple.service. I did this with the following command:
+sudo pico /etc/avahi/services/multiple.service
+The contents of this file should be something like the following, courtesy of aXon on the Rasperry Pi forums:
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+        <name replace-wildcards="yes">%h</name>
+        <service>
+                <type>_device-info._tcp</type>
+                <port>0</port>
+                <txt-record>model=RackMac</txt-record>
+        </service>
+        <service>
+                <type>_ssh._tcp</type>
+                <port>22</port>
+        </service>
+</service-group>
+Apply the new configuration with:
+sudo /etc/init.d/avahi-daemon restart
+The Pi should now be addressable from other machines as raspberrypi.local, for example:
+ssh pi@raspberrypi.local
+
+
+My /etc/avahi/services/multiple.service config is:
+
+
+pi@raspberrypi ~ $ cat /etc/avahi/services/multiple.service 
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<service-group>
+        <name replace-wildcards="yes">%h</name>
+        <service>
+                <type>_device-info._tcp</type>
+                <port>0</port>
+                <txt-record>model=LogoBot</txt-record>
+        </service>
+        <service>
+                <type>_fish._tcp</type>
+                <port>12347</port>
+        </service>
+</service-group>
