@@ -15,10 +15,11 @@ public class MovementControllerActivity extends Activity {
 		movementView = null;
 	}
 	
-	public void setDesiredSpeed(double desiredSpeed) {
+	public int setDesiredSpeed(double desiredSpeed) {
 		if (movementView != null) {
-			movementView.setDesiredSpeed(desiredSpeed);
+			return movementView.setDesiredSpeed(desiredSpeed);
 		}
+		return 0; 
 	}
 	public void centerToOrigin() {
 		if (movementView != null) {

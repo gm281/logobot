@@ -1,4 +1,5 @@
 #include <AFMotor.h>
+#include <Adafruit_NeoPixel.h>
 
 /***********************************************************************************************/
 /* CONFIG */
@@ -223,6 +224,18 @@ void power_up_command_handler(struct command command)
     pinMode(power_up_pin, OUTPUT);
     digitalWrite(power_up_pin, HIGH);
 }
+
+Adafruit_NeoPixel led_strip = Adafruit_NeoPixel(16 /* #LEDs */, 13 /* pin */, NEO_GRB + NEO_KHZ800);
+void led_init() {
+    led_strip.begin();
+    led_strip.show();
+}
+
+void led_command(uint16_t led_nr, uint8_t r, uint8_t g, uint8_t b) {
+    led_strip.setPixelColor(led_nr, led_strip.Color(r, g, b));
+    led_strip.show();
+}
+
 
 struct {
     unsigned long step_delay_us;
@@ -487,6 +500,25 @@ void process_serial_command(void)
             motor_movement_command_init(steps_l, steps_r, 1000UL * duration);
             break;
         }
+
+        case 'l':
+        {
+            uint16_t led_nr;
+            uint8_t rr, gg, bb;
+            char *end;
+
+            b++;
+            end = read_serial_data.buffer + read_serial_data.buffer_offset;
+            led_nr = parse_long(b, end, &b);
+            rr = parse_long(b, end, &b);
+            gg = parse_long(b, end, &b);
+            bb = parse_long(b, end, &b);
+
+            led_command(led_nr, rr, gg, bb);
+
+            break;
+        }
+
         default:
             Serial.print("Unknown command: \"");
             Serial.print(b);
@@ -598,6 +630,7 @@ void start_command_handler(struct command command)
     stat_accumulator_init(&serial_stats);
     memset(&motor_movement, 0, sizeof(struct motor_movement));
     memset(&motor_movement_debug, 0, sizeof(struct motor_movement_debug));
+    led_init();
 
     power_up.type = POWER_UP_COMMAND;
     power_up.timestamp = NOW;

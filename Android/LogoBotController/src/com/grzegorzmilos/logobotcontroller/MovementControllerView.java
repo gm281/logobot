@@ -92,14 +92,17 @@ public class MovementControllerView extends View implements View.OnTouchListener
 		this.invalidate();
 	}
 	
-	public void setDesiredSpeed(double desiredSpeed) {
+	public int setDesiredSpeed(double desiredSpeed) {
 		double desiredColor = 1 - desiredSpeed;
 		float[] hsvColor = new float[3];
 		hsvColor[0] = (float) (360.0 * 3/4 * desiredColor);
 		hsvColor[1] = (float)1.0; 
 		hsvColor[2] = (float)1.0; 
-		circlePaint.setColor(Color.HSVToColor(hsvColor));
+		int color = Color.HSVToColor(hsvColor);
+		circlePaint.setColor(color);
 		circleRadius = (float) (MIN_CIRCLE_RADIUS + desiredSpeed * MIN_CIRCLE_RADIUS); 
+
+		return color;
 	}
 	
 	@Override

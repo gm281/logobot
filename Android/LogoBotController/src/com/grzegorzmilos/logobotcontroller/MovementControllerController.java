@@ -8,6 +8,7 @@ import java.net.UnknownHostException;
 
 import android.app.Activity;
 import android.app.Fragment;
+import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -26,6 +27,7 @@ public class MovementControllerController extends Fragment {
 	private boolean noEvent;
 	private boolean moving;
 	private Socket connectionSocket;
+	private int viewColor;
 	
 	public MovementControllerController() {
 		movementModel = new MovementControllerModel();
@@ -57,7 +59,7 @@ public class MovementControllerController extends Fragment {
 		if (desiredSpeed < 0.01) {
 			currentActivity.centerToOrigin();
 		} else {
-			currentActivity.setDesiredSpeed(desiredSpeed);
+			viewColor = currentActivity.setDesiredSpeed(desiredSpeed);
 		}
 	}
     
@@ -95,7 +97,20 @@ public class MovementControllerController extends Fragment {
 		protected Boolean doInBackground(MovementCommand... movementCommands) {
 			MovementCommand movementCommand = movementCommands[0];
     		//System.out.println("Moving by: l:" + movementCommand.leftWheelSteps + ", r:" + movementCommand.rightWheelSteps);
-    		String commandString = "m" + movementCommand.rightWheelSteps + "," + movementCommand.leftWheelSteps + "," + movementCommand.duriationMS + "$";
+			double totalStepsPerS = (double)(Math.abs(movementCommand.rightWheelSteps) + Math.abs(movementCommand.leftWheelSteps)) /  ((double)movementCommand.duriationMS / 1000);
+			double stepsPCT = totalStepsPerS / 500; 
+			int ledsOn = (int)((stepsPCT * 8) + 1);
+			ledsOn = ledsOn > 8 ? 8 : ledsOn;
+			String commandString = "";
+			double colorDivisor = 5;
+			for (int l=0; l<ledsOn; l++) {
+				commandString = commandString + "l" + (l+8) + "," + (int)(Color.red(viewColor)/colorDivisor) + "," + (int)(Color.green(viewColor)/colorDivisor) + "," + (int)(Color.blue(viewColor)/colorDivisor) + "$";
+			}
+			for (int l=ledsOn; l<8; l++) {
+				commandString = commandString + "l" + (l+8) + ",0,0,0$";
+			}
+			
+    		commandString = commandString + "m" + movementCommand.rightWheelSteps + "," + movementCommand.leftWheelSteps + "," + movementCommand.duriationMS + "$";
     		byte[] commandBytes = commandString.getBytes();
     		try {
     			OutputStream out = connectionSocket.getOutputStream();

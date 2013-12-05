@@ -4,7 +4,7 @@ import android.util.Pair;
 
 public class MovementControllerModel {
 
-	private static final int MAX_STEPS_PER_SECOND = 180;
+	private static final int MAX_STEPS_PER_SECOND = 250;
 	private static final long ACCELERATION_TIME_MS_TO_MAX_STEPS = 1000;
     private static final double STEERING_WHEEL_DISTANCE_M = 0.2;
     private static final double DRIVE_WHEEL_SEPARATION_M = 0.2;
