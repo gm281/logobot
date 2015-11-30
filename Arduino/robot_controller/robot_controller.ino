@@ -648,7 +648,7 @@ void start_command_handler(struct command command)
 void (*command_handlers[NR_COMMAND_TYPES])(struct command command) = {
     /* [START_COMMAND] =          */ start_command_handler,
     /* [POWER_UP_COMMAND] =       */ power_up_command_handler,
-    /* [READ_SERIAL_COMMAND] =    */ read_serial_command_handler,
+    /* [READ_SERIAL_COMMAND] =    */ read_serial_command_handler, /* This is the one that accepts commands from serial line and initiates appropriate processing, if you're working out the protocol, look at this one. */
     /* [MOTOR_TEST_COMMAND] =     */ motor_test_step,
     /* [SAMPLE_PINS_COMMAND] =    */ sample_pins_command_handler,
     /* [MOTOR_MOVEMENT_COMMAND] = */ motor_movement_command_handler,

@@ -1,4 +1,4 @@
 ATM I'm using 2013-07-26-wheezy-raspbian.zip/img dd'd onto 4GB SD card (whole disk and not either of the partitions).
 
 Default user is: pi
-Password is same as Retina.
+Password is same as Retina (it is short, doesn't have extra chars, noted in passwd.img)
